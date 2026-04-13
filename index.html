@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Exchange Pro - Sistema Financiero</title>
+    <title>Global Exchange Pro - Reporte Diario</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -41,8 +41,8 @@
             <div id="result" class="result-display">0.00 DOP</div>
             
             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button class="btn" onclick="window.generarPDF()" style="background:#444; color:white; flex:1;">📄 PDF</button>
-                <button class="btn" onclick="window.imprimirRecibo()" style="background:#05cd99; color:white; flex:1;">🖨️ Imprimir</button>
+                <button class="btn" onclick="window.generarReporteDiario()" style="background:#444; color:white; flex:1;">📊 Reporte del Día (PDF)</button>
+                <button class="btn" onclick="window.imprimirRecibo()" style="background:#05cd99; color:white; flex:1;">🖨️ Ticket Venta</button>
             </div>
         </section>
 
@@ -50,23 +50,11 @@
             <h2>Tasas del Día</h2>
             <table class="rates-table">
                 <thead>
-                    <tr>
-                        <th>Moneda</th>
-                        <th>Compra</th>
-                        <th>Venta</th>
-                    </tr>
+                    <tr><th>Moneda</th><th>Compra</th><th>Venta</th></tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>🇺🇸 Dólar (USD)</td>
-                        <td id="usd-compra-val">...</td>
-                        <td id="usd-venta-val">...</td>
-                    </tr>
-                    <tr>
-                        <td>🇪🇺 Euro (EUR)</td>
-                        <td id="eur-compra-val">...</td>
-                        <td id="eur-venta-val">...</td>
-                    </tr>
+                    <tr><td>🇺🇸 Dólar (USD)</td><td id="usd-compra-val">...</td><td id="usd-venta-val">...</td></tr>
+                    <tr><td>🇪🇺 Euro (EUR)</td><td id="eur-compra-val">...</td><td id="eur-venta-val">...</td></tr>
                 </tbody>
             </table>
         </section>
@@ -102,23 +90,20 @@
                         <input type="number" id="new-eur-venta" placeholder="Venta">
                     </div>
                 </div>
-                <button class="btn" onclick="window.updateRate()">Actualizar Todo e Historial</button>
+                <button class="btn" onclick="window.updateRate()">Registrar Cambio y Guardar</button>
                 <button onclick="window.logout()" style="margin-top:15px; background:none; border:none; color:red; cursor:pointer;">Cerrar Sesión</button>
             </div>
         </section>
     </main>
 
-    <footer>
-        <p>&copy; 2026 Global Exchange | Sistema de Gestión Financiera</p>
-    </footer>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, updateDoc, collection, addDoc, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, collection, addDoc, query, orderBy, getDocs, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD3V0dUOaCq7aS67-AY8IpX0QGzeoHgLWg",
@@ -136,40 +121,64 @@
 
         let miGrafico;
 
-        // CARGAR GRÁFICO
+        // GRÁFICO
         async function cargarHistorial() {
-            try {
-                const q = query(collection(db, "historial"), orderBy("fecha", "asc"), limit(10));
-                const querySnapshot = await getDocs(q);
-                const fechas = [];
-                const valores = [];
-                
-                querySnapshot.forEach((doc) => {
-                    fechas.push(new Date(doc.data().fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-                    valores.push(doc.data().usd_compra);
-                });
-
-                const ctx = document.getElementById('graficoTasas').getContext('2d');
-                if (miGrafico) miGrafico.destroy();
-                miGrafico = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: fechas,
-                        datasets: [{
-                            label: 'USD Compra (DOP)',
-                            data: valores,
-                            borderColor: '#00D4FF',
-                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                            fill: true,
-                            tension: 0.3
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false }
-                });
-            } catch (e) { console.log("Iniciando historial..."); }
+            const q = query(collection(db, "historial"), orderBy("fecha", "asc"));
+            const snapshot = await getDocs(q);
+            const fechas = [], valores = [];
+            snapshot.forEach(doc => {
+                fechas.push(new Date(doc.data().fecha).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
+                valores.push(doc.data().usd_compra);
+            });
+            const ctx = document.getElementById('graficoTasas').getContext('2d');
+            if(miGrafico) miGrafico.destroy();
+            miGrafico = new Chart(ctx, {
+                type:'line',
+                data:{ labels:fechas, datasets:[{label:'USD Compra', data:valores, borderColor:'#00D4FF', fill:true, backgroundColor:'rgba(0,212,255,0.1)'}] },
+                options: { responsive:true, maintainAspectRatio:false }
+            });
         }
 
-        // DATOS EN TIEMPO REAL
+        // REPORTE DIARIO EN PDF
+        window.generarReporteDiario = async () => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Obtener inicio del día de hoy
+            const hoy = new Date();
+            hoy.setHours(0,0,0,0);
+            const inicioDia = hoy.getTime();
+
+            const q = query(collection(db, "historial"), where("fecha", ">=", inicioDia), orderBy("fecha", "desc"));
+            const snapshot = await getDocs(q);
+            
+            doc.setFontSize(18);
+            doc.text("REPORTE DIARIO DE OPERACIONES", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Fecha del reporte: ${new Date().toLocaleDateString()}`, 14, 30);
+
+            const filas = [];
+            snapshot.forEach(d => {
+                const data = d.data();
+                filas.push([
+                    new Date(data.fecha).toLocaleTimeString(),
+                    data.usd_compra.toFixed(2),
+                    data.usd_venta.toFixed(2),
+                    data.eur_compra.toFixed(2),
+                    data.eur_venta.toFixed(2)
+                ]);
+            });
+
+            doc.autoTable({
+                startY: 40,
+                head: [['Hora', 'USD Compra', 'USD Venta', 'EUR Compra', 'EUR Venta']],
+                body: filas,
+            });
+
+            doc.save(`Reporte_Diario_${new Date().toLocaleDateString()}.pdf`);
+        };
+
+        // ... RESTO DE FUNCIONES (Login, Update, Calcular, Imprimir Ticket) ...
         onSnapshot(rateRef, (snapshot) => {
             if (snapshot.exists()) {
                 const d = snapshot.data();
@@ -178,30 +187,7 @@
                 document.getElementById('eur-compra-val').innerText = d.eur_compra;
                 document.getElementById('eur-venta-val').innerText = d.eur_venta;
                 window.rates = d;
-                window.calcular();
             }
-        });
-
-        // CALCULADORA
-        window.calcular = () => {
-            const amount = document.getElementById('amount').value;
-            const type = document.getElementById('currency-select').value;
-            const rate = window.rates ? window.rates[type] : 0;
-            document.getElementById('result').innerText = (amount > 0) ? (amount * rate).toFixed(2) + " DOP" : "0.00 DOP";
-        };
-
-        // ADMINISTRACIÓN
-        window.login = async () => {
-            const e = document.getElementById('admin-email').value;
-            const p = document.getElementById('admin-pass').value;
-            try { await signInWithEmailAndPassword(auth, e, p); } catch(err) { alert("Error de acceso"); }
-        };
-
-        window.logout = () => signOut(auth);
-
-        onAuthStateChanged(auth, (user) => {
-            document.getElementById('admin-panel').style.display = user ? 'block' : 'none';
-            document.getElementById('login-section').style.display = user ? 'none' : 'block';
         });
 
         window.updateRate = async () => {
@@ -209,63 +195,46 @@
                 usd_compra: parseFloat(document.getElementById('new-usd-compra').value),
                 usd_venta: parseFloat(document.getElementById('new-usd-venta').value),
                 eur_compra: parseFloat(document.getElementById('new-eur-compra').value),
-                eur_venta: parseFloat(document.getElementById('new-eur-venta').value)
+                eur_venta: parseFloat(document.getElementById('new-eur-venta').value),
+                fecha: Date.now()
             };
-            try {
-                await updateDoc(rateRef, data);
-                await addDoc(collection(db, "historial"), { ...data, fecha: Date.now() });
-                alert("Sistema Actualizado");
-                cargarHistorial();
-            } catch (e) { alert("Error al guardar"); }
+            await updateDoc(rateRef, data);
+            await addDoc(collection(db, "historial"), data);
+            alert("Operación registrada e historial actualizado");
+            cargarHistorial();
         };
 
-        // PDF e IMPRESIÓN
-        window.generarPDF = () => {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            doc.text("GLOBAL EXCHANGE - COMPROBANTE", 20, 20);
-            doc.text(`Fecha: ${new Date().toLocaleString()}`, 20, 40);
-            doc.text(`Operación: ${document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text}`, 20, 50);
-            doc.text(`Monto: ${document.getElementById('amount').value}`, 20, 60);
-            doc.text(`Total: ${document.getElementById('result').innerText}`, 20, 70);
-            doc.save("recibo.pdf");
+        window.calcular = () => {
+            const amount = document.getElementById('amount').value;
+            const type = document.getElementById('currency-select').value;
+            const rate = window.rates ? window.rates[type] : 0;
+            document.getElementById('result').innerText = (amount > 0) ? (amount * rate).toFixed(2) + " DOP" : "0.00 DOP";
         };
 
         window.imprimirRecibo = () => {
-            const amount = document.getElementById('amount').value;
-            const result = document.getElementById('result').innerText;
-            const type = document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text;
             const win = window.open('', '_blank');
-            win.document.write(`
-                <div style="font-family:monospace; width:250px; text-align:center;">
-                    <h3>GLOBAL EXCHANGE</h3>
-                    <p>${new Date().toLocaleString()}</p>
-                    <p>-------------------</p>
-                    <p>${type}</p>
-                    <p>Monto: ${amount}</p>
-                    <p style="font-size:1.2rem; font-weight:bold;">Total: ${result}</p>
-                    <p>-------------------</p>
-                    <p>¡Gracias!</p>
-                </div>
-            `);
-            win.document.close();
-            win.print();
-            win.close();
+            win.document.write(`<div style="font-family:monospace; width:200px; text-align:center;"><h3>GLOBAL EXCHANGE</h3><p>${new Date().toLocaleString()}</p><p>${document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text}</p><p>Total: ${document.getElementById('result').innerText}</p></div>`);
+            win.document.close(); win.print(); win.close();
         };
+
+        window.login = async () => {
+            try { await signInWithEmailAndPassword(auth, document.getElementById('admin-email').value, document.getElementById('admin-pass').value); } catch(e) { alert("Error"); }
+        };
+        window.logout = () => signOut(auth);
+        onAuthStateChanged(auth, user => {
+            document.getElementById('admin-panel').style.display = user ? 'block' : 'none';
+            document.getElementById('login-section').style.display = user ? 'none' : 'block';
+        });
 
         const btnDark = document.getElementById('dark-mode-toggle');
         btnDark.onclick = () => document.body.classList.toggle('dark-theme');
-
         window.onload = cargarHistorial;
     </script>
 
     <style>
         .dark-theme { background: #121212 !important; color: #e0e0e0 !important; }
-        .dark-theme .calculator-card, .dark-theme .rates-table, .dark-theme input, .dark-theme select { 
-            background: #1e1e1e !important; color: #fff !important; border-color: #444; 
-        }
-        .dark-theme header { background: #000; }
-        .btn-small { padding: 5px 10px; cursor: pointer; border-radius: 5px; border: 1px solid #ccc; background: white; }
+        .dark-theme .calculator-card, .dark-theme .rates-table, .dark-theme input, .dark-theme select { background: #1e1e1e !important; color: #fff !important; }
+        .btn-small { padding: 5px 10px; cursor: pointer; border-radius: 5px; }
     </style>
 </body>
 </html>
