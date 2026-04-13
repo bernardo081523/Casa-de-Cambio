@@ -1,0 +1,83 @@
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  // CONFIGURACIÓN CORREGIDA
+  const firebaseConfig = {
+    apiKey: "AIzaSyD3V0dUOaCq7aS67-AY8IpX0QGzeoHgLWg",
+    authDomain: "casacambio-admin.firebaseapp.com",
+    projectId: "casacambio-admin",
+    storageBucket: "casacambio-admin.firebasestorage.app",
+    messagingSenderId: "491964316067",
+    appId: "1:491964316067:web:46e4d63a1d80098afd4216",
+    measurementId: "G-DLWM2HG4XQ"
+  };
+
+  // Inicializar Firebase
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // --- Lógica de Lectura en Tiempo Real ---
+  const rateRef = doc(db, "configuracion", "tasas");
+  
+  onSnapshot(rateRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      // Esto actualiza el texto de la tabla automáticamente
+      const tasaElement = document.querySelector('.rates-table tbody tr:nth-child(1) td:nth-child(2)');
+      if(tasaElement) tasaElement.innerText = data.usd_compra + " DOP";
+      window.currentRate = data.usd_compra;
+    }
+  });
+
+  // --- Lógica de Autenticación ---
+  window.login = async () => {
+    const email = document.getElementById('admin-email').value;
+    const pass = document.getElementById('admin-pass').value;
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+      alert("¡Acceso concedido, Omar!");
+    } catch (error) {
+      alert("Error de acceso: " + error.message);
+    }
+  };
+
+  // Escuchar estado del usuario
+  onAuthStateChanged(auth, (user) => {
+    const adminPanel = document.getElementById('admin-panel');
+    const loginSection = document.getElementById('login-section');
+    
+    if (user) {
+      adminPanel.style.display = 'block';
+      loginSection.style.display = 'none';
+    } else {
+      adminPanel.style.display = 'none';
+      loginSection.style.display = 'block';
+    }
+  });
+
+  // --- Lógica de Actualización ---
+  window.updateRate = async () => {
+    const newRate = document.getElementById('new-rate').value;
+    if(!newRate) return alert("Escribe un número");
+    
+    try {
+      await updateDoc(rateRef, { usd_compra: parseFloat(newRate) });
+      alert("Tasa actualizada con éxito en la nube");
+    } catch (e) {
+      alert("Error al actualizar: " + e.message);
+    }
+  };
+
+  // Función para la calculadora
+  window.calcular = () => {
+    const amount = document.getElementById('amount').value;
+    const rate = window.currentRate || 58.80; 
+    if(amount) {
+        const total = (amount * rate).toFixed(2);
+        document.getElementById('result').innerText = total + " DOP";
+    }
+  };
+</script>
