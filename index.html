@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Global Exchange Pro - Acceso Autorizado</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="estilo.css">
     <style>
         /* Pantalla de Bloqueo Profesional */
         #auth-overlay {
@@ -40,6 +40,7 @@
             <div class="container header-container">
                 <h1 class="logo">Global<span>Exchange</span></h1>
                 <div style="display:flex; align-items:center; gap:15px;">
+                    <span id="empresa-info" style="font-size: 0.8rem; color: #444;"></span>
                     <span id="user-info" style="font-size: 0.8rem; color: #00D4FF; font-weight: bold;"></span>
                     <button onclick="window.logout()" style="background:none; border: 1px solid red; color: red; padding: 5px; cursor: pointer; border-radius: 5px;">Cerrar Sesión</button>
                 </div>
@@ -63,7 +64,7 @@
                     </select>
                 </div>
                 <div id="result" class="result-display">0.00 DOP</div>
-                
+
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
                     <button class="btn" onclick="window.registrarOperacion()" style="background:#007bff; color:white;">✅ Finalizar y Registrar</button>
                     <div style="display: flex; gap: 10px;">
@@ -92,7 +93,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, collection, addDoc, query, orderBy, getDocs, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, getDocs, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD3V0dUOaCq7aS67-AY8IpX0QGzeoHgLWg",
@@ -107,38 +108,66 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        let empresaId = null; // se llena después del login
+        let empresaNombre = "";
+
         // LOGIN Y SEGURIDAD
         window.login = async () => {
             const email = document.getElementById('user-email').value;
             const pass = document.getElementById('user-pass').value;
-            try { await signInWithEmailAndPassword(auth, email, pass); } catch(e) { document.getElementById('error-msg').style.display = 'block'; }
+            document.getElementById('error-msg').style.display = 'none';
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+            } catch(e) {
+                document.getElementById('error-msg').innerText = "Acceso denegado.";
+                document.getElementById('error-msg').style.display = 'block';
+            }
         };
 
         window.logout = () => signOut(auth);
 
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // Buscar a qué empresa pertenece este usuario
+                const usuarioSnap = await getDoc(doc(db, "usuarios", user.uid));
+
+                if (!usuarioSnap.exists() || !usuarioSnap.data().empresaId) {
+                    document.getElementById('error-msg').innerText = "Este usuario no tiene una empresa asignada. Contacta al administrador.";
+                    document.getElementById('error-msg').style.display = 'block';
+                    await signOut(auth);
+                    return;
+                }
+
+                empresaId = usuarioSnap.data().empresaId;
+                empresaNombre = usuarioSnap.data().nombreEmpresa || empresaId;
+
                 document.getElementById('auth-overlay').classList.add('hidden');
                 document.getElementById('main-content').classList.remove('hidden');
                 document.getElementById('user-info').innerText = user.email;
-                // Si eres tú (admin), muestra el reporte
-                if(user.email === "tu-correo@gmail.com") document.getElementById('admin-report-btn').style.display = 'block';
+                document.getElementById('empresa-info').innerText = empresaNombre;
+
+                // El botón de auditoría se muestra solo a roles de admin
+                if (usuarioSnap.data().rol === "admin") {
+                    document.getElementById('admin-report-btn').style.display = 'block';
+                }
+
                 iniciarSistema();
             } else {
+                empresaId = null;
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-content').classList.add('hidden');
             }
         });
 
         function iniciarSistema() {
-            onSnapshot(doc(db, "configuracion", "tasas"), (snap) => {
-                if(snap.exists()) {
+            onSnapshot(doc(db, "empresas", empresaId, "configuracion", "tasas"), (snap) => {
+                if (snap.exists()) {
                     const d = snap.data();
                     window.rates = d;
-                    document.getElementById('usd-compra-val').innerText = d.usd_compra;
-                    document.getElementById('usd-venta-val').innerText = d.usd_venta;
-                    document.getElementById('eur-compra-val').innerText = d.eur_compra;
-                    document.getElementById('eur-venta-val').innerText = d.eur_venta;
+                    document.getElementById('usd-compra-val').innerText = d.usd_compra ?? '--';
+                    document.getElementById('usd-venta-val').innerText = d.usd_venta ?? '--';
+                    document.getElementById('eur-compra-val').innerText = d.eur_compra ?? '--';
+                    document.getElementById('eur-venta-val').innerText = d.eur_venta ?? '--';
                 }
             });
         }
@@ -151,32 +180,92 @@
         };
 
         window.registrarOperacion = async () => {
+            if (!empresaId) return alert("Sesión no válida, vuelve a iniciar sesión.");
             const amount = document.getElementById('amount').value;
-            if(!amount || amount <= 0) return alert("Ingrese un monto");
-            
+            if (!amount || amount <= 0) return alert("Ingrese un monto");
+
             const operacion = {
                 usuario: auth.currentUser.email,
+                tipo: document.getElementById('currency-select').value,
                 detalle: document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text,
                 monto: parseFloat(amount),
                 total: document.getElementById('result').innerText,
                 fecha: Date.now()
             };
 
-            await addDoc(collection(db, "ventas_comerciales"), operacion);
+            await addDoc(collection(db, "empresas", empresaId, "ventas"), operacion);
             alert("Operación guardada en el historial.");
             document.getElementById('amount').value = "";
             window.calcular();
         };
 
+        window.imprimirRecibo = () => {
+            const amount = document.getElementById('amount').value;
+            const detalle = document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text;
+            const total = document.getElementById('result').innerText;
+
+            if (!amount || amount <= 0) return alert("Ingrese un monto antes de imprimir el ticket.");
+
+            const ventana = window.open('', 'PRINT', 'height=600,width=400');
+            ventana.document.write(`
+                <html>
+                <head><title>Ticket</title>
+                <style>
+                    body { font-family: monospace; padding: 20px; }
+                    h2 { text-align: center; margin-bottom: 5px; }
+                    p { margin: 4px 0; }
+                    hr { border: none; border-top: 1px dashed #000; }
+                </style>
+                </head>
+                <body>
+                    <h2>${empresaNombre}</h2>
+                    <p style="text-align:center;">Comprobante de Operación</p>
+                    <hr>
+                    <p><strong>Fecha:</strong> ${new Date().toLocaleString()}</p>
+                    <p><strong>Cajero:</strong> ${auth.currentUser.email}</p>
+                    <p><strong>Operación:</strong> ${detalle}</p>
+                    <p><strong>Monto recibido:</strong> ${amount}</p>
+                    <p><strong>Total entregado:</strong> ${total}</p>
+                    <hr>
+                    <p style="text-align:center;">¡Gracias por su preferencia!</p>
+                </body>
+                </html>
+            `);
+            ventana.document.close();
+            ventana.focus();
+            ventana.print();
+        };
+
         window.generarReporteDiario = async () => {
+            if (!empresaId) return alert("Sesión no válida.");
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
+            const pdfDoc = new jsPDF();
             const hoy = new Date(); hoy.setHours(0,0,0,0);
-            const q = query(collection(db, "ventas_comerciales"), where("fecha", ">=", hoy.getTime()), orderBy("fecha", "desc"));
+
+            const q = query(
+                collection(db, "empresas", empresaId, "ventas"),
+                where("fecha", ">=", hoy.getTime()),
+                orderBy("fecha", "desc")
+            );
             const snap = await getDocs(q);
             const filas = [];
             snap.forEach(d => {
                 const v = d.data();
                 filas.push([new Date(v.fecha).toLocaleTimeString(), v.usuario, v.detalle, v.total]);
             });
-            doc.text("REPORTE DE AUDITORÍA",
+
+            pdfDoc.text(`REPORTE DE AUDITORÍA - ${empresaNombre}`, 14, 15);
+            pdfDoc.setFontSize(10);
+            pdfDoc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 22);
+
+            pdfDoc.autoTable({
+                startY: 28,
+                head: [["Hora", "Usuario", "Operación", "Total"]],
+                body: filas.length ? filas : [["--", "--", "Sin operaciones hoy", "--"]]
+            });
+
+            pdfDoc.save(`reporte-${empresaNombre}-${new Date().toISOString().slice(0,10)}.pdf`);
+        };
+    </script>
+</body>
+</html>
