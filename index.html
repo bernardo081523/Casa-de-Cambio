@@ -66,11 +66,8 @@
                 <div id="result" class="result-display">0.00 DOP</div>
 
                 <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
-                    <button class="btn" onclick="window.registrarOperacion()" style="background:#007bff; color:white;">✅ Finalizar y Registrar</button>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn" onclick="window.imprimirRecibo()" style="background:#05cd99; color:white; flex:1;">🖨️ Ticket</button>
-                        <button id="admin-report-btn" class="btn" onclick="window.generarReporteDiario()" style="background:#444; color:white; flex:1; display:none;">📊 Auditoría (PDF)</button>
-                    </div>
+                    <button class="btn" onclick="window.imprimirRecibo()" style="background:#05cd99; color:white;">🖨️ Generar Ticket</button>
+                    <button id="admin-report-btn" class="btn" onclick="window.generarReporteDiario()" style="background:#444; color:white; display:none;">📊 Auditoría (PDF)</button>
                 </div>
             </section>
 
@@ -179,32 +176,25 @@
             document.getElementById('result').innerText = (amount > 0) ? (amount * rate).toFixed(2) + " DOP" : "0.00 DOP";
         };
 
-        window.registrarOperacion = async () => {
+        window.imprimirRecibo = async () => {
             if (!empresaId) return alert("Sesión no válida, vuelve a iniciar sesión.");
-            const amount = document.getElementById('amount').value;
-            if (!amount || amount <= 0) return alert("Ingrese un monto");
-
-            const operacion = {
-                usuario: auth.currentUser.email,
-                tipo: document.getElementById('currency-select').value,
-                detalle: document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text,
-                monto: parseFloat(amount),
-                total: document.getElementById('result').innerText,
-                fecha: Date.now()
-            };
-
-            await addDoc(collection(db, "empresas", empresaId, "ventas"), operacion);
-            alert("Operación guardada en el historial.");
-            document.getElementById('amount').value = "";
-            window.calcular();
-        };
-
-        window.imprimirRecibo = () => {
             const amount = document.getElementById('amount').value;
             const detalle = document.getElementById('currency-select').options[document.getElementById('currency-select').selectedIndex].text;
             const total = document.getElementById('result').innerText;
 
             if (!amount || amount <= 0) return alert("Ingrese un monto antes de imprimir el ticket.");
+
+            // Primero se registra la operación en Firebase (auditoría obligatoria),
+            // sin importar si el cliente se lleva el ticket impreso o no.
+            const operacion = {
+                usuario: auth.currentUser.email,
+                tipo: document.getElementById('currency-select').value,
+                detalle: detalle,
+                monto: parseFloat(amount),
+                total: total,
+                fecha: Date.now()
+            };
+            await addDoc(collection(db, "empresas", empresaId, "ventas"), operacion);
 
             const ventana = window.open('', 'PRINT', 'height=600,width=400');
             ventana.document.write(`
@@ -234,6 +224,9 @@
             ventana.document.close();
             ventana.focus();
             ventana.print();
+
+            document.getElementById('amount').value = "";
+            window.calcular();
         };
 
         window.generarReporteDiario = async () => {
