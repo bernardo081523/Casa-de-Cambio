@@ -81,6 +81,28 @@
                     </tbody>
                 </table>
             </section>
+
+            <section id="edit-rates-card" class="calculator-card" style="display:none;">
+                <h3>Actualizar Tasas (Admin)</h3>
+                <div class="input-group">
+                    <label>Dólar - Compra:</label>
+                    <input type="number" step="0.01" id="edit-usd-compra">
+                </div>
+                <div class="input-group">
+                    <label>Dólar - Venta:</label>
+                    <input type="number" step="0.01" id="edit-usd-venta">
+                </div>
+                <div class="input-group">
+                    <label>Euro - Compra:</label>
+                    <input type="number" step="0.01" id="edit-eur-compra">
+                </div>
+                <div class="input-group">
+                    <label>Euro - Venta:</label>
+                    <input type="number" step="0.01" id="edit-eur-venta">
+                </div>
+                <button class="btn" onclick="window.guardarTasas()" style="background:#0A2540; color:white;">💾 Guardar Tasas</button>
+                <p id="tasas-msg" style="margin-top:10px; font-size:0.85rem; display:none;"></p>
+            </section>
         </main>
     </div>
 
@@ -90,7 +112,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, getDocs, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy, getDocs, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD3V0dUOaCq7aS67-AY8IpX0QGzeoHgLWg",
@@ -143,9 +165,10 @@
                 document.getElementById('user-info').innerText = user.email;
                 document.getElementById('empresa-info').innerText = empresaNombre;
 
-                // El botón de auditoría se muestra solo a roles de admin
+                // El botón de auditoría y la edición de tasas se muestran solo a rol admin
                 if (usuarioSnap.data().rol === "admin") {
                     document.getElementById('admin-report-btn').style.display = 'block';
+                    document.getElementById('edit-rates-card').style.display = 'block';
                 }
 
                 iniciarSistema();
@@ -165,9 +188,49 @@
                     document.getElementById('usd-venta-val').innerText = d.usd_venta ?? '--';
                     document.getElementById('eur-compra-val').innerText = d.eur_compra ?? '--';
                     document.getElementById('eur-venta-val').innerText = d.eur_venta ?? '--';
+
+                    // Si el usuario es admin, mantiene los campos de edición actualizados
+                    // (solo si no los está editando en este momento)
+                    if (document.getElementById('edit-rates-card').style.display !== 'none' && document.activeElement.tagName !== 'INPUT') {
+                        document.getElementById('edit-usd-compra').value = d.usd_compra ?? '';
+                        document.getElementById('edit-usd-venta').value = d.usd_venta ?? '';
+                        document.getElementById('edit-eur-compra').value = d.eur_compra ?? '';
+                        document.getElementById('edit-eur-venta').value = d.eur_venta ?? '';
+                    }
                 }
             });
         }
+
+        window.guardarTasas = async () => {
+            if (!empresaId) return alert("Sesión no válida.");
+
+            const nuevas = {
+                usd_compra: parseFloat(document.getElementById('edit-usd-compra').value),
+                usd_venta: parseFloat(document.getElementById('edit-usd-venta').value),
+                eur_compra: parseFloat(document.getElementById('edit-eur-compra').value),
+                eur_venta: parseFloat(document.getElementById('edit-eur-venta').value)
+            };
+
+            // Validación simple: que no queden campos vacíos o inválidos
+            for (const key in nuevas) {
+                if (isNaN(nuevas[key]) || nuevas[key] <= 0) {
+                    return alert("Revisa los valores, todos deben ser números mayores a 0.");
+                }
+            }
+
+            try {
+                await setDoc(doc(db, "empresas", empresaId, "configuracion", "tasas"), nuevas, { merge: true });
+                const msg = document.getElementById('tasas-msg');
+                msg.innerText = "✅ Tasas actualizadas: " + new Date().toLocaleTimeString();
+                msg.style.color = "#05cd99";
+                msg.style.display = "block";
+            } catch (e) {
+                const msg = document.getElementById('tasas-msg');
+                msg.innerText = "❌ Error al guardar. Intenta de nuevo.";
+                msg.style.color = "red";
+                msg.style.display = "block";
+            }
+        };
 
         window.calcular = () => {
             const amount = document.getElementById('amount').value;
